@@ -64,6 +64,8 @@
 		</style>
 		<script type="text/javascript" src="js/Stats.js"></script>
 		<script type="text/javascript" src="js/Three.js"></script>
+		<script type="text/javascript" src="js/Ray.js"></script>
+		<script type="text/javascript" src="js/Color.js"></script>
 		<script type="text/javascript" src="js/CameraControl.js"></script>
 		<script type="text/javascript" src="js/RequestAnimationFrame.js"></script>		
 	</head>
@@ -82,7 +84,7 @@
 			 <span onclick="kill_object_line();">DEL</span> <br/><br/>
 			<a href="?renderer=webgl">WEBGL</a>
 			<a href="?renderer=canvas">CANVAS</a>
-			<a href="?renderer=svg">SVG</a>
+			<a href="?renderer=svg">SVG</a> <!-- Particles not working for SVG -->
 		</div>
 
 		<script type="text/javascript">
@@ -138,37 +140,85 @@
 				scene.removeObject(obj_planet);
 			}
 			function init_object_points() {
-				var material = new THREE.ParticleCircleMaterial( { color: 0xffffff } );
-				obj_points = new THREE.Geometry();
-				obj_points_list = [];
 
-				//Particles aren't selectable, and don't render under WebGL
-				for ( var i = 0; i < 20; i ++ ) {
-					var particle = new THREE.Particle( material );
-					particle.position.x = Math.random() * 2 - 1;
-					particle.position.y = Math.random() * 2 - 1;
-					particle.position.z = Math.random() * 2 - 1;
-					particle.position.normalize();
-					particle.position.multiplyScalar( Math.random()*10 + 100 );
-					particle.scale.x = particle.scale.y = 5;
-					scene.addObject( particle );
-					
-					obj_points_list.push(particle);
-					obj_points.vertices.push( new THREE.Vertex( particle.position ) );
+				//=======================================
+				if (option_RenderEngine == "webgl") {
+					obj_points = new THREE.Geometry();
+					kill_object_points();
+
+					for ( var i = 0; i < 20; i ++ ) {
+						var vector = new THREE.Vertex(new THREE.Vector3( Math.random()*200-100, Math.random()*200-100, Math.random()*200-100 ));
+						obj_points.vertices.push( vector );
+						obj_points.colors.push( new THREE.Color( Math.random() * 0xffffff ) );
+					}
+					var sprite = ImageUtils.loadTexture( "textures/sun2.png" );
+					var material = new THREE.ParticleBasicMaterial( { size: 30, map: sprite, blending: THREE.AdditiveBlending, vertexColors: true } );
+
+					particles = new THREE.ParticleSystem( obj_points, material );
+					particles.sortParticles = true;
+					particles.isClickable = true;
+					particles.updateMatrix();
+					scene.addObject( particles );
+
+					obj_points_list.push(particles);
+
+				//=======================================
+				} else { // Canvas					
+					kill_object_points();
+					obj_points = new THREE.Geometry();
+					obj_points_list = [];
+
+					for ( var i = 0; i < 20; i ++ ) {
+						var material = new THREE.ParticleBasicMaterial( { map: new THREE.Texture( generateTexture(Math.random()*0xffffff) ), blending: THREE.AdditiveBlending } );
+						var particle = new THREE.Particle( material );
+						particle.position.x = Math.random() * 2 - 1;
+						particle.position.y = Math.random() * 2 - 1;
+						particle.position.z = Math.random() * 2 - 1;
+						particle.position.normalize();
+						particle.position.multiplyScalar( Math.random()*10 + 100 );
+						scene.addObject( particle );
+						
+						obj_points_list.push(particle);
+						obj_points.vertices.push( new THREE.Vertex( particle.position ) );
+					}
 				}
 			}
 			function kill_object_points() {
 				for (var l = obj_points_list.length, i = l-1; i >= 0; i--) {
 					scene.removeObject(obj_points_list[i]);
+					obj_points = [];
 				}
 			}
 			function init_object_line() {
-				obj_line = new THREE.Line( obj_points, new THREE.LineBasicMaterial( { color: 0xffffff, opacity: 0.5 } ) );
+				//NOTE: Line isn't drawing for WebGL... why?
+
+				var geometry = new THREE.Geometry(); 
+				for (var i = 0; i < obj_points.vertices.length; i++) {
+					geometry.vertices.push( new THREE.Vertex( obj_points.vertices[i].position ) );
+				}
+					
+				var material = new THREE.LineBasicMaterial( { color: 0xffffff * Math.random(), opacity: 0.8 } );
+				obj_line = new THREE.Line( geometry, material );
 				scene.addObject( obj_line );			
 			}
 			function kill_object_line() {
 				scene.removeObject(obj_line);
-			}			
+			}
+			//=======================================
+			function generateTexture(color) {
+				var canvas = document.createElement( 'canvas' );
+				canvas.width = 32;
+				canvas.height = 32;
+				var col = new THREE.Color(color);
+				
+				var context = canvas.getContext( '2d' );
+				var gradient = context.createRadialGradient( canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2 );
+				gradient.addColorStop( 0, col.rgbaString);
+				gradient.addColorStop( .9, 'rgba(0,0,0,0)' );
+				context.fillStyle = gradient;
+				context.fillRect( 0, 0, canvas.width, canvas.height );
+				return canvas;
+			}
 			//=========================================
 			function init_grid() {
 				// Grid
@@ -233,6 +283,7 @@
 						case "webgl": renderer = new THREE.WebGLRenderer(); break;
 						case "canvas": renderer = new THREE.CanvasRenderer(); break;
 						case "svg": renderer = new THREE.SVGRenderer(); break;
+						case "dom": renderer = new THREE.DOMRenderer(); break;
 						default: break;
 					}
 					option_RenderEngine = requested_renderer;
